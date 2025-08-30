@@ -1,0 +1,6 @@
+python-telegram-bot
+python-dotenv
+google-cloud-vision
+google-cloud-aiplatform
+Pillow
+cryptography
