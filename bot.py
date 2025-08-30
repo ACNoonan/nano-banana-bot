@@ -7,26 +7,11 @@ from google.cloud import vision
 import io
 import vertexai
 from vertexai.preview.vision_models import ImageGenerationModel
-import database
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     await update.message.reply_text('Hello! I am Nano Banana Bot. Send me a picture to process or text to generate an image. For more information, use the /help command.')
-
-
-async def set_api_key_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Set the user's API key."""
-    user_id = update.message.from_user.id
-    try:
-        api_key = context.args[0]
-        database.set_api_key(user_id, api_key)
-        await update.message.reply_text("Your API key has been set successfully. I will now delete your message for security.")
-    except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /set_api_key <your_api_key>")
-    
-    # Delete the message containing the API key for security
-    await context.bot.delete_message(chat_id=update.message.chat_id, message_id=update.message.message_id)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -38,7 +23,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "2. *Analyze images:* Send me a photo, and I'll tell you what I see in it.\n\n"
         "Commands:\n"
         "/start - Start the conversation with the bot.\n"
-        "/set_api_key - Set your Google Cloud API key.\n"
         "/help - Show this help message."
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -46,26 +30,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text messages for image generation."""
-    user_id = update.message.from_user.id
-    api_key_path = database.get_api_key(user_id)
-
-    if not api_key_path:
-        await update.message.reply_text("Please set your API key first using the /set_api_key command.")
-        return
-
     text = update.message.text
     await update.message.reply_text(f"Generating image for: '{text}'. This might take a moment...")
 
     try:
-        # The GOOGLE_APPLICATION_CREDENTIALS env var will be set temporarily for this call
-        # In a real-world scenario, you'd manage this more robustly
-        original_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = api_key_path
-
-        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-        location = os.getenv("GOOGLE_CLOUD_LOCATION")
-        vertexai.init(project=project_id, location=location)
-        
         model = ImageGenerationModel.from_pretrained("imagegeneration@005")
         response = model.generate_images(
             prompt=text,
@@ -77,13 +45,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_photo(photo=io.BytesIO(image_bytes))
         else:
             await update.message.reply_text("Sorry, I could not generate an image for that prompt.")
-        
-        # Restore original credentials if they existed
-        if original_creds:
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_creds
-        else:
-            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-
     except Exception as e:
         logging.error(f"Error generating image: {e}")
         await update.message.reply_text("Sorry, there was an error generating the image.")
@@ -91,22 +52,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle image messages for processing."""
-    user_id = update.message.from_user.id
-    api_key_path = database.get_api_key(user_id)
-
-    if not api_key_path:
-        await update.message.reply_text("Please set your API key first using the /set_api_key command.")
-        return
-        
     photo = update.message.photo[-1]
     photo_file = await photo.get_file()
     
     photo_bytes = io.BytesIO()
     await photo_file.download_to_memory(photo_bytes)
     photo_bytes.seek(0)
-    
-    original_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = api_key_path
 
     client = vision.ImageAnnotatorClient()
     image = vision.Image(content=photo_bytes.read())
@@ -125,18 +76,20 @@ async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             '{}\nFor more info on error messages, check: '
             'https://cloud.google.com/apis/design/errors'.format(
                 response.error.message))
-    
-    if original_creds:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_creds
-    else:
-        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
 
 
 def main():
     """Start the bot."""
     load_dotenv()
 
-    database.initialize_database()
+    # Initialize Vertex AI
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION")
+    if project_id and location:
+        vertexai.init(project=project_id, location=location)
+    else:
+        logging.warning("GOOGLE_CLOUD_PROJECT and/or GOOGLE_CLOUD_LOCATION not set. Image generation will fail.")
+
 
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not telegram_token:
@@ -146,7 +99,6 @@ def main():
     application = Application.builder().token(telegram_token).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("set_api_key", set_api_key_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.PHOTO, handle_image))
