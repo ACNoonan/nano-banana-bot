@@ -42,16 +42,24 @@ async def handle_image_generation(update: Update, context: ContextTypes.DEFAULT_
         
         img = Image.open(photo_bytes_io)
 
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Use the latest flash model, which is better suited for this.
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content([prompt, img])
 
-        # Access the generated image data correctly from the blob.
-        generated_image_bytes = response.parts[0].inline_data.data
-        
-        img_buffer = io.BytesIO(generated_image_bytes)
-        img_buffer.seek(0)
-        
-        await update.message.reply_photo(photo=img_buffer)
+        # Safely check the response and extract the image data.
+        if response.parts and response.parts[0].inline_data and response.parts[0].inline_data.data:
+            generated_image_bytes = response.parts[0].inline_data.data
+            
+            img_buffer = io.BytesIO(generated_image_bytes)
+            img_buffer.seek(0)
+            
+            await update.message.reply_photo(photo=img_buffer)
+        else:
+            logging.error(f"Gemini API did not return image data. Response: {response}")
+            error_text_from_api = ""
+            if response.parts and response.parts[0].text:
+                error_text_from_api = f" The API returned text: '{response.parts[0].text}'"
+            await update.message.reply_text(f"Sorry, I could not generate an image.{error_text_from_api}")
 
     except Exception as e:
         logging.error(f"Error generating image: {e}")
