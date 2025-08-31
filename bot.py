@@ -42,8 +42,8 @@ async def handle_image_generation(update: Update, context: ContextTypes.DEFAULT_
         
         img = Image.open(photo_bytes_io)
 
-        # Use the latest flash model, which is better suited for this.
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Use the 'gemini-1.5-pro' model, which is designed for multimodal tasks.
+        model = genai.GenerativeModel('gemini-1.5-pro')
         response = model.generate_content([prompt, img])
 
         # Safely check the response and extract the image data.
