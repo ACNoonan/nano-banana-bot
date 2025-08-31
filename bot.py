@@ -1,95 +1,74 @@
 import os
 import logging
+import io
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-from google.cloud import vision
-import io
-import vertexai
-from vertexai.preview.vision_models import ImageGenerationModel
-
+import google.generativeai as genai
+from PIL import Image
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
-    await update.message.reply_text('Hello! I am Nano Banana Bot. Send me a picture to process or text to generate an image. For more information, use the /help command.')
-
+    await update.message.reply_text('Hello! Send me an image with a text prompt as the caption, and I will generate a new image for you.')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /help is issued."""
     help_text = (
         "Welcome to the Nano Banana Bot!\n\n"
-        "You can use this bot to:\n"
-        "1. *Generate images from text:* Just send me a text message with a description of the image you want to create.\n"
-        "2. *Analyze images:* Send me a photo, and I'll tell you what I see in it.\n\n"
-        "Commands:\n"
-        "/start - Start the conversation with the bot.\n"
-        "/help - Show this help message."
+        "**How to use:**\n"
+        "1. Attach an image to a message.\n"
+        "2. Add a text prompt in the 'caption' field.\n"
+        "3. Send the message.\n\n"
+        "The bot will use your image and prompt to generate a new image using the Gemini 1.5 Flash model."
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
+async def handle_image_generation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles image and caption to generate a new image."""
+    if not update.message.caption:
+        await update.message.reply_text("Please send an image with a text prompt in the caption.")
+        return
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle text messages for image generation."""
-    text = update.message.text
-    await update.message.reply_text(f"Generating image for: '{text}'. This might take a moment...")
+    prompt = update.message.caption
+    await update.message.reply_text(f"Generating image for: '{prompt}'. This might take a moment...")
 
     try:
-        model = ImageGenerationModel.from_pretrained("imagegeneration@005")
-        response = model.generate_images(
-            prompt=text,
-            number_of_images=1
-        )
+        photo = update.message.photo[-1]
+        photo_file = await photo.get_file()
         
-        if response.images:
-            image_bytes = response.images[0]._image_bytes
-            await update.message.reply_photo(photo=io.BytesIO(image_bytes))
-        else:
-            await update.message.reply_text("Sorry, I could not generate an image for that prompt.")
+        photo_bytes_io = io.BytesIO()
+        await photo_file.download_to_memory(photo_bytes_io)
+        photo_bytes_io.seek(0)
+        
+        img = Image.open(photo_bytes_io)
+
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content([prompt, img])
+
+        # Assuming the API returns a PIL.Image object in the response.
+        # This part might need adjustment based on the actual API response format.
+        # For this library, the response.parts[0] should contain the image data.
+        generated_image_bytes = response.parts[0]._raw_content.blob.data
+        
+        img_buffer = io.BytesIO(generated_image_bytes)
+        img_buffer.seek(0)
+        
+        await update.message.reply_photo(photo=img_buffer)
+
     except Exception as e:
         logging.error(f"Error generating image: {e}")
-        await update.message.reply_text("Sorry, there was an error generating the image.")
-
-
-async def handle_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle image messages for processing."""
-    photo = update.message.photo[-1]
-    photo_file = await photo.get_file()
-    
-    photo_bytes = io.BytesIO()
-    await photo_file.download_to_memory(photo_bytes)
-    photo_bytes.seek(0)
-
-    client = vision.ImageAnnotatorClient()
-    image = vision.Image(content=photo_bytes.read())
-
-    response = client.label_detection(image=image)
-    labels = response.label_annotations
-
-    if labels:
-        label_descriptions = [label.description for label in labels]
-        await update.message.reply_text(f"Detected labels: {', '.join(label_descriptions)}")
-    else:
-        await update.message.reply_text("Could not detect any labels in the image.")
-
-    if response.error.message:
-        raise Exception(
-            '{}\nFor more info on error messages, check: '
-            'https://cloud.google.com/apis/design/errors'.format(
-                response.error.message))
-
+        await update.message.reply_text("Sorry, there was an error generating the image. Please check your API key and ensure the model is accessible.")
 
 def main():
     """Start the bot."""
     load_dotenv()
 
-    # Initialize Vertex AI
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
-    location = os.getenv("GOOGLE_CLOUD_LOCATION")
-    if project_id and location:
-        vertexai.init(project=project_id, location=location)
-    else:
-        logging.warning("GOOGLE_CLOUD_PROJECT and/or GOOGLE_CLOUD_LOCATION not set. Image generation will fail.")
-
+    # Configure the Gemini API
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_api_key:
+        logging.error("GEMINI_API_KEY not found in environment variables.")
+        return
+    genai.configure(api_key=gemini_api_key)
 
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if not telegram_token:
@@ -100,11 +79,13 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    application.add_handler(MessageHandler(filters.PHOTO, handle_image))
+    # This handler now specifically looks for messages that are photos WITH a caption.
+    application.add_handler(MessageHandler(filters.PHOTO & filters.CAPTION, handle_image_generation))
+    # A handler for photos without a caption, to guide the user.
+    application.add_handler(MessageHandler(filters.PHOTO & ~filters.CAPTION, lambda u, c: u.message.reply_text("Please include a text prompt in the caption.")))
+
 
     application.run_polling()
-
 
 if __name__ == '__main__':
     logging.basicConfig(
