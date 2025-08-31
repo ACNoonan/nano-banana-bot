@@ -45,10 +45,8 @@ async def handle_image_generation(update: Update, context: ContextTypes.DEFAULT_
         model = genai.GenerativeModel('gemini-1.5-flash')
         response = model.generate_content([prompt, img])
 
-        # Assuming the API returns a PIL.Image object in the response.
-        # This part might need adjustment based on the actual API response format.
-        # For this library, the response.parts[0] should contain the image data.
-        generated_image_bytes = response.parts[0]._raw_content.blob.data
+        # Access the generated image data correctly from the blob.
+        generated_image_bytes = response.parts[0].inline_data.data
         
         img_buffer = io.BytesIO(generated_image_bytes)
         img_buffer.seek(0)
