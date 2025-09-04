@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import google.generativeai as genai
+from google.api_core import exceptions
 from PIL import Image
 
 # --- Bot Command Handlers ---
@@ -47,6 +48,9 @@ async def handle_text_to_image(update: Update, context: ContextTypes.DEFAULT_TYP
             logging.error(f"API did not return image data for text prompt. Response: {response}")
             await update.message.reply_text("Sorry, I could not generate an image from that text. The model may have refused the prompt.")
 
+    except exceptions.ResourceExhausted as e:
+        logging.warning(f"Quota exceeded for text-to-image: {e}")
+        await update.message.reply_text("⚠️ You've hit the free tier API quota for this model. Please wait a bit or check your Google Cloud billing details.")
     except Exception as e:
         logging.error(f"Error in text-to-image generation: {e}")
         await update.message.reply_text("Sorry, there was an error generating your image.")
@@ -79,6 +83,9 @@ async def handle_image_and_text_to_image(update: Update, context: ContextTypes.D
             logging.error(f"API did not return image data for image prompt. Response: {response}")
             await update.message.reply_text("Sorry, I could not generate an image. The model may have refused the prompt.")
 
+    except exceptions.ResourceExhausted as e:
+        logging.warning(f"Quota exceeded for image-and-text-to-image: {e}")
+        await update.message.reply_text("⚠️ You've hit the free tier API quota for this model. Please wait a bit or check your Google Cloud billing details.")
     except Exception as e:
         logging.error(f"Error in image-and-text-to-image generation: {e}")
         await update.message.reply_text("Sorry, there was an error generating your image.")
