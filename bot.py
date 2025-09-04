@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import google.generativeai as genai
 from google.api_core import exceptions
+import httpx
 from PIL import Image
 
 # --- Bot Command Handlers ---
@@ -28,7 +29,46 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-# --- Image Generation Logic ---
+# --- Quota and Image Generation Logic ---
+
+async def get_quota_info(project_id: str, model_name: str) -> str:
+    """Fetches and formats quota information from the Google Cloud Quotas API."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    service_name = "generativelanguage.googleapis.com"
+    url = f"https://cloudquotas.googleapis.com/v1/projects/{project_id}/locations/global/services/{service_name}/quotaInfos?key={api_key}"
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            formatted_quotas = [f"Quota details for model `{model_name}`:"]
+            quota_found = False
+            if 'quotaInfos' in data:
+                for info in data['quotaInfos']:
+                    dimensions = info.get('dimensions', {})
+                    if dimensions.get('model') == model_name:
+                        quota_found = True
+                        name = info.get('displayName', 'Unknown Quota')
+                        usage = int(info.get('quotaUsage', {}).get('currentValue', 0))
+                        limit = int(info.get('quotaIncreaseEligibility', {}).get('limitValue', 0))
+                        formatted_quotas.append(f"- *{name}*: Used {usage} / {limit}")
+            
+            if quota_found:
+                return "\n".join(formatted_quotas)
+            else:
+                return "Could not retrieve specific quota details for the model."
+
+    except httpx.HTTPStatusError as e:
+        logging.error(f"Error fetching quota info: {e.response.status_code} - {e.response.text}")
+        if e.response.status_code == 403:
+            return "Could not fetch quota details. Please ensure the 'Cloud Quotas API' is enabled in your Google Cloud project."
+        return "Could not fetch quota details due to a server error."
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while fetching quota info: {e}")
+        return "An error occurred while trying to fetch your quota details."
+
 
 async def handle_text_to_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Generates an image from a text prompt."""
@@ -50,7 +90,9 @@ async def handle_text_to_image(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except exceptions.ResourceExhausted as e:
         logging.warning(f"Quota exceeded for text-to-image: {e}")
-        await update.message.reply_text("⚠️ You've hit the free tier API quota for this model. Please wait a bit or check your Google Cloud billing details.")
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        quota_details = await get_quota_info(project_id, "gemini-1.5-flash")
+        await update.message.reply_text(f"⚠️ You've hit the API quota.\n\n{quota_details}", parse_mode='Markdown')
     except Exception as e:
         logging.error(f"Error in text-to-image generation: {e}")
         await update.message.reply_text("Sorry, there was an error generating your image.")
@@ -85,7 +127,9 @@ async def handle_image_and_text_to_image(update: Update, context: ContextTypes.D
 
     except exceptions.ResourceExhausted as e:
         logging.warning(f"Quota exceeded for image-and-text-to-image: {e}")
-        await update.message.reply_text("⚠️ You've hit the free tier API quota for this model. Please wait a bit or check your Google Cloud billing details.")
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
+        quota_details = await get_quota_info(project_id, "gemini-1.5-pro")
+        await update.message.reply_text(f"⚠️ You've hit the API quota.\n\n{quota_details}", parse_mode='Markdown')
     except Exception as e:
         logging.error(f"Error in image-and-text-to-image generation: {e}")
         await update.message.reply_text("Sorry, there was an error generating your image.")
@@ -98,6 +142,9 @@ def main():
     load_dotenv()
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     
+    if not os.getenv("GOOGLE_CLOUD_PROJECT"):
+        logging.warning("GOOGLE_CLOUD_PROJECT not set in .env file. Quota details will not be available.")
+
     application = Application.builder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
 
     application.add_handler(CommandHandler("start", start))
