@@ -1,17 +1,19 @@
 # Nano Banana Bot
 
-A Telegram bot that generates new images from a prompt and an existing image, using Google's Gemini 1.5 Flash model.
+A Telegram bot that generates images using Google's Gemini models. It can create new images from a text prompt, or modify an existing image based on a prompt.
 
 ## Features
 
-- Generates a new image based on a user-provided image and a text prompt.
-- Powered by the `gemini-1.5-flash` model via the Google Generative AI API.
-- Secure handling of API keys using a local `.env` file.
-- Simple, user-friendly commands: `/start` and `/help`.
+-   **Text-to-Image Generation:** Creates an image from a descriptive text prompt using the `gemini-1.5-flash` model.
+-   **Image-and-Text-to-Image Generation:** Modifies an existing image based on a text prompt using the multimodal `gemini-1.5-pro` model.
+-   Secure handling of API keys using a local `.env` file.
+-   Simple, user-friendly commands: `/start` and `/help`.
 
 ## How it Works
 
-You send a message containing an image and a caption. The bot takes both your image and your text prompt (the caption) and sends them to the Gemini model, which then generates a completely new image based on your inputs.
+The bot has two modes:
+1.  **Send a plain text message:** The bot will interpret this as a text-to-image request.
+2.  **Send a message with an image and a caption:** The bot will use both the image and the text prompt (in the caption) to generate a new, modified image.
 
 ## Setup
 
@@ -55,5 +57,6 @@ You send a message containing an image and a caption. The bot takes both your im
     ```
 2.  **Interact with the bot on Telegram:**
     -   Use the `/start` command to begin.
-    -   Send a message with an image and a caption describing what you want to generate.
-    -   Use `/help` for instructions.
+    -   Send a text message for text-to-image.
+    -   Send an image with a caption for image modification.
+    -   Use `/help` for detailed instructions.
