@@ -1,16 +1,8 @@
-# Environments
-.env
-.venv
-venv/
-env/
+# Python
 __pycache__/
 *.pyc
+.env
+venv/
 
-# IDEs
-.idea/
-.vscode/
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
+# Service Account Keys
+*.json

@@ -50,30 +50,44 @@ pip install -r requirements.txt
 
 The bot uses two authentication methods:
 -   An **API Key** for the Gemini API (image generation).
--   **Application Default Credentials (ADC)** for the Cloud Quotas API (checking usage).
+-   A **Service Account** for the Cloud Quotas API (checking usage). This is the standard, most secure method for authenticating applications.
 
-#### Setting up Application Default Credentials (ADC)
-You need to authenticate your local environment to allow the bot to access the Cloud Quotas API.
+#### Setting up a Service Account
+You need to create a dedicated account for the bot and download its private key.
 
-1.  **Install the `gcloud` CLI:** Follow the instructions to [install the Google Cloud CLI](https://cloud.google.com/sdk/docs/install).
-2.  **Log in:** Run the following command and follow the prompts to log in with your Google account.
-    ```bash
-    gcloud auth application-default login
-    ```
-This command saves a credential file on your local machine that the bot will automatically find and use.
+1.  **Go to the Service Accounts page** in the Google Cloud Console. This link will take you directly to the correct project:
+    -   [https://console.cloud.google.com/iam-admin/serviceaccounts?project=nanabonanatgbot](https://console.cloud.google.com/iam-admin/serviceaccounts?project=nanabonanatgbot)
+
+2.  Click **"+ CREATE SERVICE ACCOUNT"**.
+    -   **Service account name:** `nano-banana-bot-sa`
+    -   Click **"CREATE AND CONTINUE"**.
+
+3.  **Grant it the `Cloud Quotas Viewer` role.**
+    -   In the "Select a role" dropdown, type `Cloud Quotas Viewer` and select it. This allows the bot to read usage information.
+    -   Click **"CONTINUE"**, then **"DONE"**.
+
+4.  **Create a JSON Key.**
+    -   Back on the Service Accounts list, click the email of the account you just created.
+    -   Go to the **"KEYS"** tab.
+    -   Click **"ADD KEY"** -> **"Create new key"**.
+    -   Ensure **JSON** is selected and click **"CREATE"**. A JSON file will be downloaded.
 
 ### 6. Create `.env` file
-Create a file named `.env` in the root directory. You will need your Telegram Token, your Gemini API Key, and your Google Cloud Project ID.
+1.  Move the downloaded JSON key file into the root of the `nano-banana-bot` project directory.
+2.  Create a file named `.env`. You will need your Telegram Token, your Gemini API Key, your Google Cloud Project ID, and the name of the JSON key file.
 
 ```ini
 # Telegram Bot Token from BotFather
 TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
 
-# Your Google Gemini API Key
+# Your Google Gemini API Key (must be from the same project)
 GEMINI_API_KEY="your_gemini_api_key"
 
 # Your Google Cloud Project ID
 GOOGLE_CLOUD_PROJECT="your-gcp-project-id"
+
+# The filename of your downloaded service account key
+GOOGLE_APPLICATION_CREDENTIALS="your-service-account-file-name.json"
 ```
 
 ## Usage

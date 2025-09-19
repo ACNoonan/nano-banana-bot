@@ -49,12 +49,13 @@ async def get_quota_info(project_id: str, model_name: str) -> str:
         )
 
     service_name = "generativelanguage.googleapis.com"
-    url = f"https://cloudquotas.googleapis.com/v1/projects/{project_id}/locations/global/services/{service_name}/consumerQuotaLimits"
-
     headers = {
         'Authorization': f'Bearer {credentials.token}',
         'Content-Type': 'application/json'
     }
+
+    # The correct endpoint is /quotaInfos
+    url = f"https://cloudquotas.googleapis.com/v1/projects/{project_id}/locations/global/services/{service_name}/quotaInfos"
 
     try:
         response = requests.get(url, headers=headers)
@@ -63,13 +64,19 @@ async def get_quota_info(project_id: str, model_name: str) -> str:
 
         formatted_quotas = [f"Quota details for model `{model_name}`:"]
         quota_found = False
-        if 'consumerQuotaLimits' in data:
-            for limit in data['consumerQuotaLimits']:
-                if any(dim.get('value') == model_name for dim in limit.get('dimensionsInfo', {}).get('details', [])):
+        if 'quotaInfos' in data:
+            for info in data['quotaInfos']:
+                dimensions = info.get('dimensionsInfo', {}).get('details', [])
+                if any(dim.get('value') == model_name for dim in dimensions):
                     quota_found = True
-                    name = limit.get('displayName', 'Unknown Quota')
-                    usage = int(limit.get('consumerQuotaUsages', [{}])[0].get('value', 0))
-                    limit_val = int(limit.get('value', 0))
+                    name = info.get('displayName', 'Unknown Quota')
+                    usage = int(info.get('consumerQuotaUsages', [{}])[0].get('value', 0))
+                    
+                    # Find the limit value in the grant details
+                    limit_val = 'N/A'
+                    if 'grant' in info and 'value' in info['grant']:
+                        limit_val = int(info['grant']['value'])
+
                     formatted_quotas.append(f"- *{name}*: Used {usage} / {limit_val}")
         
         if quota_found:
