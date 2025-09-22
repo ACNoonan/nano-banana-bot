@@ -2,5 +2,3 @@ python-telegram-bot
 python-dotenv
 google-generativeai
 Pillow
-requests
-google-auth
